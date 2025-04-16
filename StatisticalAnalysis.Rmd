@@ -1,0 +1,1067 @@
+---
+title: "Project - Attacker"
+author: "Notes on Skewness"
+date: "2025-04-07"
+output: html_document
+---
+
+
+```{r}
+soccer<- read.csv("final_data.csv", header=TRUE)
+soccer
+```
+
+To prepare the dataset for analysis, all rows containing missing values or zero market value (current_value) were removed. This ensured that only complete and relevant player records were retained.
+```{r}
+# Removes any rows with null values
+soccerclean<- soccer[rowSums(is.na(soccer))==0,]
+
+# Removes any rows that has current_value = 0
+soccerclean <- soccerclean[soccerclean$current_value != 0, ]
+
+str(soccerclean)
+```
+To further refine the dataset, players with zero minutes played across the two seasons were excluded. This step ensured that the analysis focused only on active players with actual playing time.
+```{r}
+# Removes any rows that has minutes.played = 0
+soccerclean <- soccerclean[soccerclean$minutes.played != 0, ]
+str(soccerclean)
+```
+To narrow the analysis to attacking players, the dataset was filtered to include only those in forward positions: Centre Forward, Left Winger, Right Winger, and Second Striker. These position labels were then recoded into more concise and readable categories. 
+```{r}
+#removing non attackers 
+soccerclean<-soccerclean[soccerclean$position%in%c("Attack Centre-Forward","Attack-LeftWinger","Attack-RightWinger","Attack-SecondStriker"),]
+
+#renaming the data
+soccerclean$position <- ifelse(soccerclean$position == "Attack Centre-Forward", "Centre Forward",
+                         ifelse(soccerclean$position == "Attack-LeftWinger", "Left Winger",
+                         ifelse(soccerclean$position == "Attack-RightWinger", "Right Winger",
+                         ifelse(soccerclean$position == "Attack-SecondStriker", "Second Striker",
+                         soccerclean$position))))
+str(soccerclean)
+```
+To streamline the analysis, only relevant variables were retained from the dataset. These included player demographics, performance metrics, injury history, and market value indicators. The refined dataset focused on attributes most pertinent to evaluating player value and performance.
+```{r}
+colstokeep <- c("team", "name", "position", "height", "age", "goals", "assists", "minutes.played", "award","days_injured", "current_value", "winger")
+
+soccerclean <- soccerclean[, colstokeep]
+```
+
+To estimate each player's overall contribution, total goals and total assists were calculated by scaling their per-90-minute averages according to total minutes played. This provided a more accurate measure of offensive output across the two seasons.
+```{r}
+soccerclean$totalgoals <- soccerclean$goals * (soccerclean$minutes.played/90)
+soccerclean$totalassists <- soccerclean$assists * (soccerclean$minutes.played/90)
+```
+
+Let's see the dataset one last time!
+```{r}
+head(soccerclean)
+```
+
+```{r}
+str(soccerclean)
+```
+
+Histograms and boxplots were generated to examine the distribution of player market values (current_value). Due to a strong right-skew in the original scale, a log₁₀ transformation was applied to better visualise the data and assess its suitability for statistical analysis
+```{r}
+par(mfrow=c(1,2))
+hist(soccerclean$current_value, main = "Histogram of Current Value", xlab = "Current Value")
+hist(log(soccerclean$current_value), main = "Histogram of log(Current Value)", xlab = "log(Current Value)")
+```
+
+``` {r}
+par(mfrow=c(1,2))
+boxplot(soccerclean$current_value, main = "Boxplot of Current Value", ylab = "Current Value")
+boxplot(log(soccerclean$current_value), main = "Boxplot of log(Current Value)", ylab = "log(Current Value)")
+```
+
+New column created for logged current value 
+```{r}
+soccerclean$log_cv<-log(soccerclean$current_value)
+```
+
+```{r}
+par(mfrow=c(1,2))
+hist(soccerclean$log_cv, main = "Histogram of log(Current Value)", xlab = "log(Current Value)")
+boxplot(soccerclean$log_cv, main = "Boxplot of log(Current Value)", ylab = "log(Current Value)")
+```
+Removing the outliers
+```{r}
+# Original row count
+original_count <- nrow(soccerclean)
+cat("Number of players before removal:", original_count, "\n")
+
+# IQR calculation
+Q1 <- quantile(soccerclean$log_cv, 0.25, na.rm = TRUE)
+Q3 <- quantile(soccerclean$log_cv, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+# Define bounds
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+cat("Lower Bound:", lower_bound, "\n")
+cat("Upper Bound:", upper_bound, "\n")
+
+# Logical filter for inliers
+inliers <- soccerclean$log_cv >= lower_bound & soccerclean$log_cv <= upper_bound
+
+# Count and remove outliers
+num_outliers <- sum(!inliers)
+cat("Number of outliers removed:", num_outliers, "\n")
+
+# Apply filter
+soccerclean <- soccerclean[inliers, ]
+```
+
+Let's replot
+
+```{r}
+par(mfrow=c(1,2))
+hist(soccerclean$log_cv)
+boxplot(soccerclean$log_cv)
+```
+# 3.2 Summary Statistics for other variables
+
+#### 3.2.1 Position of the player, *position*
+
+The distribution of players across attacking positions was examined to understand the sample composition. The frequency of each position was sorted in descending order to highlight the most represented roles within the dataset.
+```{r}
+sort(table(soccerclean$position), decreasing = TRUE)
+```
+
+```{r}
+# Bar plot of player positions
+barplot(sort(table(soccerclean$position), decreasing = TRUE),
+        col = "darkorange",
+        main = "Distribution of Player Positions",
+        ylab = "Number of Players")
+```
+
+The bar chart displays the distribution of players across the four attacking positions. Center Forwards are the most represented group by a wide margin, followed by Left Wingers and Right Wingers, who appear in nearly equal numbers. In contrast, Second Strikers make up a small fraction of the sample, indicating limited data for that specific role.
+
+#### 3.2.2 Whether the player is a winger, *winger* (2 sample t-test)
+
+In this dataset, the `winger` variable is encoded as a binary indicator, where:
+- `1` indicates that the player is a winger
+- `0` indicates that the player is not a winger
+
+We can explore the distribution of wingers vs non-wingers below:
+```{r}
+# Frequency table of winger status
+table(soccerclean$winger)
+
+# As percentages
+round(prop.table(table(soccerclean$winger)) * 100, 1)
+```
+We can also visualise this as a bar chart:
+```{r}
+barplot(table(soccerclean$winger),
+        names.arg = c("Not a Winger", "Winger"),
+        col = c("lightgrey", "steelblue"),
+        main = "Distribution of Wingers in Dataset",
+        ylab = "Number of Players")
+```
+The bar chart shows a nearly equal distribution between wingers and non-wingers in the dataset. This balanced representation supports fair comparisons in subsequent analyses involving the winger variable, such as examining its relationship with market value.
+
+#### 3.2.3 Height of the player, *height*
+
+The `height` variable indicates the player's height in. We explore the distribution of player height below.
+```{r}
+# Summary statistics
+summary(soccerclean$height)
+```
+We can visualise the distribution using a histogram:
+```{r}
+hist(soccerclean$height,
+     main = "Distribution of Player Heights",
+     xlab = "Height (cm)",
+     col = "lightblue",
+     breaks = 20)
+```
+The histogram illustrates the distribution of player heights in the dataset. The distribution is approximately bell-shaped and symmetric, centring around 180 cm, which appears to be the most common height range. This suggests that player height is relatively normally distributed among attackers in the sample, with most falling between 170 cm and 190 cm.
+
+Use a boxplot to examine the spread and detect any outliers:
+```{r}
+boxplot(soccerclean$height,
+        main = "Boxplot of Player Height",
+        ylab = "Height (cm)",
+        col = "lightgreen")
+```
+Removing the outliers
+```{r}
+# Step 1: Store original count
+original_n <- nrow(soccerclean)
+cat("Players before removing height outliers:", original_n, "\n")
+
+# Step 2: Compute IQR
+Q1 <- quantile(soccerclean$height, 0.25, na.rm = TRUE)
+Q3 <- quantile(soccerclean$height, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+# Step 3: Define bounds
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+cat("Lower height bound:", lower_bound, "\n")
+cat("Upper height bound:", upper_bound, "\n")
+
+# Step 4: Filter dataset to keep only inliers
+inliers <- soccerclean$height >= lower_bound & soccerclean$height <= upper_bound
+
+# Step 5: Show how many were removed
+cat("Height outliers removed:", sum(!inliers), "\n")
+
+# Step 6: Apply filter
+soccerclean <- soccerclean[inliers, ]
+```
+Let's replot the barplot to see the distribution
+```{r}
+boxplot(soccerclean$height,
+        main = "Boxplot of Player Height",
+        ylab = "Height (cm)",
+        col = "lightgreen")
+```
+Let's analyse based on exact position!
+```{r}
+boxplot(height ~ position, data = soccerclean,
+        main = "Player Height by Position Group",
+        ylab = "Height (cm)",
+        col = "skyblue",
+        las = 1)
+```
+The boxplot compares player height across different attacking positions. Centre Forwards tend to be the tallest on average, with a median height above 180 cm and a narrower interquartile range. In contrast, Left Wingers, Right Wingers, and Second Strikers generally exhibit shorter median heights and wider variability. These differences suggest that height may play a more prominent role for Centre Forwards compared to other forward roles.
+
+#### 3.2.4 Age as of 2023, *age*
+
+The `age` variable represents the player's age as of 2023. Understanding the age distribution helps identify the experience level and career stage of players in the dataset.
+```{r}
+# Summary statistics for age
+summary(soccerclean$age)
+```
+We now visualise the distribution of player ages:
+```{r}
+# Histogram of age
+hist(soccerclean$age,
+     main = "Distribution of Player Age (as of 2023)",
+     xlab = "Age",
+     col = "lightblue",
+     breaks = 15)
+```
+The histogram displays the age distribution of players as of 2023. The distribution is right-skewed, with the majority of players aged between 20 and 28 years. The peak occurs around the early 20s, reflecting the typical prime age range for professional footballers. Older players are progressively fewer, indicating a natural decline in representation beyond the age of 30.
+
+
+To address the slight right skew in the age distribution, a logarithmic transformation was applied to the age variable, creating a new variable log_age. A histogram of the transformed data was then plotted to assess its distribution and suitability for statistical analysis.
+```{r}
+soccerclean$log_age<-log(soccerclean$age)
+hist(soccerclean$log_age)
+```
+The histogram displays the distribution of player age after applying a logarithmic transformation. Compared to the original age distribution, the log_age variable appears more symmetrically distributed, with reduced right skew. This transformation helps to stabilise variance and improve normality, making the variable more suitable for statistical tests that assume a normal distribution. The log-transformation thus enhances the interpretability and robustness of age-related analyses.
+
+Let's see if there's any outliers
+```{r}
+# Boxplot of age
+boxplot(soccerclean$log_age,
+        main = "Boxplot of lg(Player Age)",
+        ylab = "Age",
+        col = "lightgreen")
+```
+
+``` {r}
+summary(soccerclean$log_age)
+```
+
+Let's remove outliers from *log_age*
+```{r}
+# Step 1: Store original count
+original_n <- nrow(soccerclean)
+cat("Players before removing log_age outliers:", original_n, "\n")
+
+# Step 2: Compute IQR
+Q1 <- quantile(soccerclean$log_age, 0.25, na.rm = TRUE)
+Q3 <- quantile(soccerclean$log_age, 0.75, na.rm = TRUE)
+IQR <- Q3 - Q1
+
+# Step 3: Define bounds
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+cat("Lower height bound:", lower_bound, "\n")
+cat("Upper height bound:", upper_bound, "\n")
+
+# Step 4: Filter dataset to keep only inliers
+inliers <- soccerclean$log_age >= lower_bound & soccerclean$log_age <= upper_bound
+
+# Step 5: Show how many were removed
+cat("log_age outliers removed:", sum(!inliers), "\n")
+
+# Step 6: Apply filter
+soccerclean <- soccerclean[inliers, ]
+```
+No outliers to be removed from log_age.
+
+#### 3.2.5 Total number of days injured across the 2 seasons, *days_injured*
+
+To enable analysis of how injury history relates to player value and performance, a new categorical variable injury was created based on total days injured over two seasons. The variable segments players into six bands reflecting the severity and typical recovery duration of injuries:
+
+No Injury: Players who remained injury-free, maintaining consistent availability.
+
+< 1 Month: Minor injuries with short recovery periods (e.g., light strains or knocks), usually requiring less than 4 weeks of downtime.
+
+1M – 2M: Moderate injuries such as muscle strains or small fractures, typically leading to a 4–8 week absence.
+
+2M – 6M: More serious injuries (e.g., ligament tears or post-surgical recovery), often resulting in players missing half a season.
+
+6M – 1Y: Severe injuries (e.g., ACL ruptures), causing extended time away from play and impacting match readiness.
+
+> 1Y: Chronic or career-threatening injuries requiring over a year of recovery, often associated with long-term loss of form or diminished market value.
+
+This classification supports clearer insights into how injury severity may affect a player's career trajectory and valuation.
+```{r}
+soccerclean$injury<-cut(soccerclean$days_injured,
+               breaks = c(-Inf,0,30,60,180,360,Inf),
+               labels = c("No injury","< 1M","1M - 2M","2M - 6M","6M - 1Y","> 1Y"))
+```
+
+```{r}
+barplot(table(soccerclean$injury),
+        names.arg = c("No injury","< 1M","1M - 2M","2M - 6M","6M - 1Y","> 1Y"),
+        col = c("lightgrey", "steelblue","green","yellow","brown","purple"),
+        main = "Distribution of Injuries in Dataset",
+        ylab = "Number of Players")
+```
+NOTE: Can we go more indepth to the people who are injured? Make it into numerical variable afterwards
+
+``` {r}
+par(mfrow=c(1,2))
+hist(log(soccerclean[soccerclean$days_injured > 0, "days_injured"]), 
+     main = "Histogram of log(Days Injured)",
+     xlab = "log(Days Injured)",
+     col = "lightblue")
+boxplot(log(soccerclean[soccerclean$days_injured > 0, "days_injured"]), 
+        main = "Boxplot of log(Days Injured)",
+        ylab = "log(Days Injured)",
+        col = "lightgreen")
+```
+
+#### 3.2.6 Total number of goals scored per game, *totalgoals* (KENDALL TAU)
+
+```{r}
+hist(soccerclean$totalgoals)
+```
+
+The histogram illustrates the distribution of players’ total goals over two seasons. The data is heavily right-skewed, with most players scoring fewer than 10 goals, and a long tail representing a small number of high-scoring individuals. This distribution reflects the typical scoring pattern in football, where a few elite forwards contribute disproportionately to goal totals. The skewness may warrant a transformation or categorisation to facilitate meaningful statistical comparisons.
+
+```{r}
+boxplot(soccerclean$totalgoals)
+```
+
+The boxplot presents the distribution of total goals scored by players across two seasons. The data shows a high concentration of players with low goal totals, with a median of fewer than 10 goals. 
+
+A large number of outliers—players who scored significantly more—are visible above the upper whisker, indicating a long right tail. These outliers represent high-performing forwards who scored well above the typical range, contributing to the pronounced skew observed in the corresponding histogram.
+
+Although the distribution of total goals is highly skewed and contains numerous outliers, these values were not removed because they represent genuine, high-performing players within the dataset. 
+
+In football, it is expected that a small number of attackers contribute disproportionately to goal-scoring across a season or two. These outliers are not data entry errors or anomalies, but rather true reflections of exceptional performance. Removing them would risk distorting the real-world dynamics of player value and impact, particularly in a dataset focused on attackers. Therefore, the full range of goal-scoring figures was retained to preserve the integrity and representativeness of the analysis.
+
+```{r}
+range(soccerclean$totalgoals)
+summary(soccerclean$totalgoals)
+```
+
+To aid in categorising player performance, the total number of goals scored was summarised using quantiles at 20% intervals. This provided an understanding of how goal-scoring is distributed across the dataset and enabled the definition of goal-scoring tiers (e.g., "Very Low", "Low", "Moderate", "High", "Very High"). 
+This approach ensures that categories are data-driven and balanced, allowing for fair comparisons between groups in subsequent analysis.
+```{r}
+quantile(soccerclean$totalgoals, probs = seq(0, 1, 0.2), na.rm = TRUE)
+```
+To enable comparison across different levels of scoring performance, players were grouped into goal-scoring categories based on their total goals over two seasons. The cut points were defined using data-informed thresholds, resulting in five categories:
+1. Very Low (0–1), 
+2. Low (2–3), 
+3. Moderate (4–8), 
+4. High (9–15), and 
+5. Very High (16–83).
+
+This binning approach facilitates clearer interpretation of trends and supports meaningful statistical analysis across performance tiers.
+```{r}
+breaks <- c(0, 1, 3, 8, 15, 83)
+soccerclean$goal_category <- cut(soccerclean$totalgoals,
+                                 breaks = breaks,
+                                 include.lowest = TRUE,
+                                 labels = c("Very Low", "Low", "Moderate", "High", "Very High"))
+```
+
+```{r}
+barplot(table(soccerclean$goal_category),
+        col = "skyblue",
+        main = "Number of Players by Goal Category",
+        xlab = "Goal Category",
+        ylab = "Number of Players")
+
+```
+The bar chart displays the distribution of players across the five goal-scoring categories. While all categories are relatively well-represented, there are a few observations:
+1. Moderate group contains the largest number of players, suggesting that most attackers score between 4 to 8 goals over two seasons. 
+2. Both the Very Low and Very High categories are also substantial, reflecting the expected variation in forward performance — from role players with minimal goal output to elite strikers with standout records. 
+
+The balanced spread across categories supports robust comparative analysis.
+
+#### 3.2.7 Total number of Assists scored per game, *totalassists* (KENDALL TAU)
+```{r}
+hist(soccerclean$totalassists)
+```
+The histogram illustrates the distribution of total assists recorded by players over two seasons. Similar to goal-scoring, the distribution is heavily right-skewed, with the majority of players contributing fewer than 5 assists. A small number of outliers exhibit high assist totals, highlighting players with strong playmaking roles. This skewed distribution reflects the reality that only a limited subset of attackers consistently provide assists at a high level. The pattern suggests a need for transformation or categorisation to enable more effective statistical analysis.
+
+As with goal-scoring, quantiles were computed for total assists to guide the creation of assist performance categories based on the data’s distribution.
+```{r}
+quantile(soccerclean$totalassists, probs = seq(0, 1, 0.25), na.rm = TRUE)
+```
+
+```{r}
+breaks <- c(0, 1, 3, 7, max(soccerclean$totalassists, na.rm = TRUE))
+soccerclean$assists_category <- cut(soccerclean$totalassists,
+                                    breaks = breaks,
+                                    include.lowest = TRUE,
+                                    labels = c("None", "Low", "Moderate", "High"))
+```
+
+```{r}
+barplot(table(soccerclean$assists_category),
+        col = "violet",
+        main = "Number of Players by Assists Category",
+        xlab = "Assists Category",
+        ylab = "Number of Players")
+
+```
+The bar chart shows the distribution of players by assist category. 
+1. A large number of players fall into the “None” group, indicating they registered zero assists over two seasons. 
+2. The remaining players are relatively evenly spread across the Low, Moderate, and High assist categories. This suggests that while most attackers contribute minimally to playmaking, a notable portion still provides meaningful assist totals, supporting further group-based comparisons.
+
+```{r}
+table(soccerclean$assists_category)
+```
+#### 3.2.8 Total number of minutes played across the 2 seasons, *minutes.played*
+
+To address the right-skewed distribution of minutes.played, various transformations were applied and visualised, including square root, log₁₀, and natural log. These transformations were used to evaluate which form best normalises the data for use in statistical modelling.
+```{r}
+par(mfrow=c(2,2))
+hist(soccerclean$minutes.played)
+hist(sqrt(soccerclean$minutes.played))
+hist(log10(soccerclean$minutes.played))
+hist(log(soccerclean$minutes.played))
+```
+Players were categorised into five experience levels based on their total minutes played over two seasons. The binning thresholds were defined to reflect different degrees of match involvement:
+* Very Low: ≤ 500 minutes (rarely featured or new players)
+* Low: 501–1500 minutes (occasional appearances)
+* Moderate: 1501–2700 minutes (rotational players or part-time starters)
+* High: 2701–4000 minutes (consistent starters for one full season)
+*Very High: > 4000 minutes (core players featuring regularly across two seasons)
+This classification enables clearer analysis of how player involvement relates to market value.
+
+To categorise players based on their on-field experience, we applied a customised binning approach to the minutes.played variable. Rather than using quantiles, which simply split the data into equal-sized groups without contextual meaning, we defined cutoffs that reflect real-world playing time thresholds in football.
+
+For example, a full season typically consists of around 2700 minutes. Using this as a reference, players were grouped into five experience levels: Very Low (<500 minutes), Low (500–1500), Moderate (1500–2700), High (2700–4000), and Very High (>4000). This method ensures that each category carries interpretive value tied to actual playing time, providing clearer insights when analysing trends in player performance or value.
+
+By grounding the binning in domain knowledge, this approach enhances both the relevance and interpretability of the resulting categories—something the quartile method may not guarantee in this context.
+```{r}
+soccerclean$minutes_category <- cut(soccerclean$minutes.played,
+                                    breaks = c(-Inf, 500, 1500, 2700, 4000, Inf),
+                                    labels = c("Very Low", "Low", "Moderate", "High", "Very High"),
+                                    include.lowest = TRUE)
+```
+
+```{r}
+barplot(table(soccerclean$minutes_category),
+        col = "skyblue",
+        main = "Number of Players by Minutes Category",
+        ylab = "Number of Players",
+        xlab = "Minutes Categories")
+```
+
+# Section 4
+#### 4.1.1 Relation between *height* and *log_cv* (Pearson's correlation)
+
+```{r}
+plot(soccerclean$height, soccerclean$log_cv,
+     main = "Height vs log(Current Value)",
+     xlab = "Height (cm)", ylab = "log(Current Value)",
+     pch = 16, col = "blue")
+abline(lm(log_cv ~ height, data = soccerclean), col = "red", lwd = 2)
+```
+
+The scatterplot shows a very weak positive trend between height and log-transformed market value (log_cv).
+
+A *Pearson’s correlation* was conducted to assess the relationship between player height and log-transformed market value (log_cv). 
+
+```{r}
+cor.test(soccerclean$height, soccerclean$log_cv, method = "pearson")
+```
+
+Although the correlation is statistically significant (r = 0.077, p < 0.001), the spread of points around the trend line indicates that height plays a negligible role in determining a player's market value.
+
+The test revealed a statistically significant but very weak positive correlation between the two variables, r = 0.077, p < 0.001. This indicates that taller players tend to have slightly higher market values, but the strength of this relationship is minimal and likely not practically meaningful.
+
+#### 4.1.2 Relation between *log_age* and *log_cv* (Pearson's correlation)
+
+```{r}
+plot(soccerclean$log_age, soccerclean$log_cv,
+     main = "log(Age) vs log(Current Value)",
+     xlab = "log(Age)", ylab = "log(Current Value)",
+     pch = 16, col = "darkgreen")
+abline(lm(log_cv ~ log_age, data = soccerclean), col = "red", lwd = 2)
+```
+
+As shown in the scatterplot, there is a slight upward trend in the regression line, indicating a weak positive association between age and current value.
+
+The wide spread of data points around the regression line suggests that log-transformed age does not strongly predict a player’s market value. While older players may have slightly higher values on average, this effect is minimal and likely influenced by other variables such as performance or position.
+
+```{r}
+cor.test(soccerclean$log_age, soccerclean$log_cv, method = "pearson")
+```
+
+The result showed a statistically significant but very weak positive correlation, r = 0.054, p = 0.004.
+Although the p-value suggests that the relationship is unlikely due to chance, the small effect size indicates that age has very limited influence on market value when considered on its own.
+
+#### 4.1.3 Relation between *Goals* and *log_cv* 
+
+##### 4.1.3.1 Relation between *totalgoals* (numerical) and *log_cv* (Using Spearman Correlation)
+
+The *Spearman Correlation* determines if there is a monotonic relationship between a player’s total goals and their transfer value (log_cv), without assuming linearity or normality. As compared to the Pearson correlation, the Spearman method is *more robust to outliers and non-normal (skewed) distributions*, making it suitable for this analysis.
+
+``` {r}
+# Spearman rank correlation
+cor.test(
+  x    = soccerclean$totalgoals,
+  y    = soccerclean$log_cv,
+  method = "spearman",
+  exact  = FALSE        # for large n
+)
+```
+
+Since rho value is 0.517 > 0, we can conclude that there is a positive correlation between total goals and log_cv. The p-value is < 2.2e-16, indicating that the correlation is statistically significant.
+
+Let us further explore this relationship between goals and log_cv using the *One-Way ANOVA and Kruskal-Wallis Tests*, together with their post-hoc tests.
+
+##### 4.1.3.2 Relation between *goal_category* (categorical) and *log_cv* (Using one way ANOVA) 
+
+A boxplot was generated to visualise the relationship between goal-scoring categories and log-transformed player market value (log_cv). The plot allows for a clear comparison of value distributions across performance tiers, highlighting whether higher goal totals correspond to increases in market valuation.
+
+```{r}
+boxplot(log_cv ~ goal_category, data = soccerclean,
+        col = "lightblue",
+        main = "log(Current Value) by Goal Category",
+        xlab = "Goal Category",
+        ylab = "log(Current Value)")
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(soccerclean, aes(x = goal_category, y = log_cv)) +
+  stat_summary(fun = mean, geom = "point", size = 3, color = "red") +
+  stat_summary(fun = mean, geom = "line", aes(group = 1), color = "red") +
+  geom_jitter(alpha = 0.3, width = 0.2, color = "darkblue") +
+  labs(title = "Mean log(Current Value) by Goal Category",
+       x = "Goal Category", y = "log(Current Value)") +
+  theme_minimal()
+```
+
+The scatter plot illustrates the relationship between goal category and log-transformed market value (log_cv), with mean values highlighted and connected by a trend line. The plot reveals a positive association: players in higher goal-scoring categories tend to have higher market values. 
+
+This trend suggests that increased goal contributions are consistently rewarded in terms of player valuation, reinforcing the importance of scoring performance in determining market worth.
+
+A *one-way ANOVA* was conducted to test whether there are statistically significant differences in log-transformed market value (log_cv) across the five goal-scoring categories.
+
+```{r}
+anova_model <- aov(log_cv ~ goal_category, data = soccerclean)
+summary(anova_model)
+```
+
+A one-way ANOVA was conducted to examine the effect of goal-scoring category on a player's market value, measured by log_cv.
+The null hypothesis (H₀) stated that mean log_cv is equal across all goal-scoring categories, while the alternative hypothesis (H₁) posited that at least one group differs significantly.
+
+The results showed a highly significant difference across the five goal_category groups (F(4, 2765) = 250, p < 0.0001)
+
+Following a significant ANOVA result, *pairwise t-tests with Bonferroni adjustment* were performed to identify which goal-scoring categories differed significantly in their mean log_cv. The Bonferroni correction *controlled for Type I error due to multiple comparisons*, ensuring robust and reliable pairwise significance testing.
+
+```{r}
+pairwise.t.test(soccerclean$log_cv, soccerclean$goal_category, p.adjust.method = "bonferroni")
+```
+
+The Bonferroni-adjusted pairwise t-tests reveal that mean log-transformed market value (log_cv) differs significantly across nearly all goal-scoring categories. 
+
+1. Every comparison involving the Very High and High scoring groups shows extremely small p-values (all < 2e-16), indicating strong evidence of value differences.
+
+2. Even lower-tier comparisons, such as between Low and Very Low, are statistically significant. 
+This reinforces the ANOVA findings, confirming that goal-scoring performance has a clear and measurable impact on player market value.
+
+##### Using Kruskal-Wallis Test (to further confirm the ANOVA results)
+
+*Kruskal-Wallis Test* is a non-parametric alternative to one-way ANOVA, used when the *assumptions of normality or homogeneity of variance are violated*. It assesses whether there are *statistically significant differences in the median values* of log_cv across the goal categories.
+
+``` {r}
+kruskal.test(log_cv ~ goal_category, data = soccerclean)
+```
+
+The Kruskal-Wallis test yielded a highly significant result (H = 696.74, p < 0.0001), indicating that at least one of the five goal categories has a statistically significant different median transfer value (log_cv). This non-parametric test supports the earlier ANOVA findings, confirming that goal-scoring performance is meaningfully associated with player market valuation.
+
+Similar to the ANOVA, post-hoc pairwise comparisons were conducted to identify which specific goal categories differed in median log_cv. The *Pairwise Wilcoxon Test* was used for this purpose, applying a Bonferroni correction to control for multiple comparisons.
+
+``` {r}
+pairwise.wilcox.test(
+  x = soccerclean$log_cv,
+  g = soccerclean$goal_category,
+  p.adjust.method = "bonferroni"
+)
+```
+
+The pairwise Wilcoxon tests with Bonferroni adjustment indicate that all goal categories differ significantly in terms of median log_cv. Every p-value is far below 0.001, demonstrating strong statistical evidence that increases in goal contribution are consistently associated with higher player value. This reinforces the earlier ANOVA findings and highlights the importance of scoring performance in driving market valuation among attacking players.
+
+##### Further Test Explorations
+
+##### Using Quantile Regression (for totalgoals and not goals_category)
+
+``` {r}
+library(quantreg)
+
+# median (50th percentile) regression
+rq50 <- rq(
+  log_cv ~ totalgoals + minutes.played,
+  tau = 0.5,
+  data = soccerclean
+)
+
+# you can also fit multiple taus at once
+rq_all <- rq(
+  log_cv ~ totalgoals + minutes.played,
+  tau = c(0.2, 0.4, 0.6, 0.8),
+  data = soccerclean
+)
+
+summary(rq50)
+summary(rq_all)
+```
+
+At τ=0.20: 0.02613 → e^0.02613 ≈ 1.026 ⇒ ~2.6% increase in the 20th‐percentile value per goal.
+At τ=0.40: 0.03414 → e^0.02613 ≈ 1.035 ⇒ ~3.5% increase at the 40th percentile.
+At τ=0.60: 0.03653 → e^0.02613 ≈ 1.037 ⇒ ~3.7% increase at the 60th percentile (peak effect).
+At τ=0.80: 0.03346 → e^0.02613 ≈ 1.034 ⇒ ~3.4% increase at the 80th percentile.
+
+Overall an increasing trend of impact of each goal scored on transfer value as the player's value increases from 2.6% to 3.7%, with a slight dip towards the highest value players down to 3.4%.
+
+Median (τ=0.5): +3.8% value per goal.
+Lower tail (τ=0.2): +2.6% per goal.
+Upper tail (τ=0.8): +3.4% per goal.
+
+Key Insight:
+Scoring matters more for players around the middle‐to‐upper end of the market (40th–60th percentiles) than for the very lowest 20%, and slightly less for the very top 20%.
+
+This nuance cannot be seen in a single OLS fit, which only gives you the average effect. Quantile regression reveals that the magnitude of the goals→value relationship varies across the value spectrum.
+
+``` {r}
+plot(summary(rq_all), parm = "totalgoals")
+```
+
+##### Using Robust Regression for just totalgoals and minutes.played using Huber's M-estimator
+
+``` {r}
+library(MASS)
+
+# Huber’s M-estimator
+robust_mod <- rlm(
+  log_cv ~ totalgoals + minutes.played,
+  data = soccerclean
+)
+
+summary(robust_mod)
+```
+
+Basically, for every goal scored, the log-transformed market value (log_cv) increases by 0.0313 units, which translates to a 3.2% increase in the current value (since e^0.0313 ≈ 1.0318). This suggests that scoring goals has a positive and significant impact on a player's market value.
+
+We will show the difference between a robust regression for just minutes played and totalgoals, and one for minutes played, totalgoals, and totalassists.
+
+#### 4.1.5 Relation between *totalassists* and *log_cv* (Using Spearman Correlation)
+
+Similar to what we did for "totalgoals", the *Spearman Correlation* determines if there is a monotonic relationship between a player’s total assists and their transfer value (log_cv), without assuming linearity or normality. As compared to the Pearson correlation, the Spearman method is more robust to outliers and non-normal distributions, making it suitable for this analysis.
+
+``` {r}
+# Spearman rank correlation
+cor.test(
+  x    = soccerclean$totalassists,
+  y    = soccerclean$log_cv,
+  method = "spearman",
+  exact  = FALSE        # for large n
+)
+```
+
+Since rho value is 0.533 > 0, we can conclude that there is a positive correlation between total assists and log_cv (transfer price value). The p-value is < 2.2e-16, indicating that the correlation is statistically significant.
+
+Let us further explore this relationship between assists and log_cv using the One-Way ANOVA and Kruskal-Wallis Tests, together with their post-hoc tests.
+
+#### 4.1.6 Relation between *assists_category* and *log_cv* (Using one way ANOVA)
+
+A boxplot was created to visualise the distribution of log-transformed market value (log_cv) across different assist categories. This plot highlights how player value varies with assist performance, making it easier to observe trends or disparities between players with differing levels of playmaking contribution.
+
+```{r}
+boxplot(log_cv ~ assists_category, data = soccerclean,
+        col = "lightgreen",
+        main = "log(Current Value) by Assist Category",
+        ylab = "log(Current Value)",
+        xlab = "Assist Category",
+        las = 2)
+```
+
+```{r}
+ggplot(soccerclean, aes(x = assists_category, y = log_cv)) +
+  geom_boxplot(fill = "lightblue") +
+  stat_summary(fun = mean, geom = "point", color = "red", size = 2) +
+  labs(title = "log(Current Value) by Assist Category",
+       x = "Assist Category", y = "log(Current Value)") +
+  theme_minimal()
+```
+
+The boxplot illustrates the distribution of log-transformed market value (log_cv) across different assist categories. 
+
+1. A clear upward trend is observed, with median and mean values (red dots) increasing steadily from the "None" to "High" assist groups. This suggests that players who contribute more assists tend to have higher market values. 
+
+2. The spread and presence of outliers within each group reflect the natural variability in value even among players with similar assist counts, but the overall pattern reinforces the positive relationship between playmaking ability and market valuation.
+
+##### Perform One-Way ANOVA test
+
+```{r}
+anova_assist <- aov(log_cv ~ assists_category, data = soccerclean)
+summary(anova_assist)
+```
+
+A one-way ANOVA was conducted to determine whether market value (log_cv) differs across assist performance tiers.
+
+The null hypothesis stated that there is no difference in average log-transformed market value (log_cv) across assist performance categories.
+
+The alternative hypothesis proposed that at least one assist group differs in mean log_cv.
+
+Based on the ANOVA result (F = 349.5, p < 0.0001), we reject the null hypothesis and conclude that assist performance has a significant impact on market value.
+
+```{r}
+pairwise.t.test(soccerclean$log_cv, soccerclean$assists_category, p.adjust.method = "bonferroni")
+```
+
+The Bonferroni-adjusted pairwise t-tests indicate that all assist categories differ significantly in terms of mean log-transformed market value (log_cv). Every p-value is less than 2e-16, demonstrating strong statistical evidence that increases in assist contribution are consistently associated with higher player value. This reinforces the earlier ANOVA findings and highlights the importance of playmaking performance in driving market valuation among attacking players.
+
+##### Using Kruskal-Wallis Test (to further confirm the ANOVA results)
+
+*Kruskal-Wallis Test* is a non-parametric alternative to one-way ANOVA, used *when the assumptions of normality or homogeneity of variance are violated*. It assesses whether there are statistically significant differences in the median values of log_cv across the assists categories.
+
+``` {r}
+kruskal.test(log_cv ~ assists_category, data = soccerclean)
+```
+
+The Kruskal-Wallis test yielded a highly significant result (H = 733.14, p < 0.0001), indicating that at least one of the five assist categories has a statistically significant different median transfer value (log_cv). This non-parametric test supports the earlier ANOVA findings, confirming that assists performance is meaningfully associated with player market valuation.
+
+Similar to the ANOVA, post-hoc pairwise comparisons were conducted to identify which specific assist categories differed in median log_cv. The Pairwise Wilcoxon Test was used for this purpose, applying a Bonferroni correction to control for multiple comparisons.
+
+``` {r}
+pairwise.wilcox.test(
+  x = soccerclean$log_cv,
+  g = soccerclean$assists_category,
+  p.adjust.method = "bonferroni"
+)
+```
+
+The pairwise Wilcoxon tests with Bonferroni adjustment indicate that all assist categories differ significantly in terms of median log_cv. Every p-value is far below 0.001, demonstrating strong statistical evidence that increases in assist contribution are consistently associated with higher player value. This reinforces the earlier ANOVA findings and highlights the importance of assist performance in driving market valuation among attacking players.
+
+#### 4.1.7 Relation between *totalgoals*, *totalassists* and *log_cv* (Using Robust Regression)
+
+##### Checking Correlation between totalgoals, totalassists and log_cv
+
+``` {r}
+library(ggcorrplot)
+cor_matrix<-(cor(soccerclean[,c("log_cv","totalgoals","totalassists", "minutes.played")]))
+ggcorrplot(cor_matrix,lab=TRUE)
+```
+
+
+``` {r}
+# Huber’s M-estimator
+robust_mod <- rlm(
+  log_cv ~ totalgoals + totalassists + minutes.played,
+  data = soccerclean
+)
+
+summary(robust_mod)
+```
+
+How this changed from the previous robust regression model which only took into account minutes.played and totalgoals was:
+
+1. Strong positive correlation between totalassists and log_cv (0.0767) is shown, where each assist contributes to a 8% increase in market value (since e^0.0767 ≈ 1.0797). This suggests that assists have a significant positive impact on a player's market value, much more than that of goals.
+
+2. The coefficient for totalgoals decreased slightly from 0.0313 to 0.0290 once assists are taken into account. This is due to the correlation between goals and assists (~0.63), resulting in some of the shared variance shifting to the new totalassets variable. 
+
+The impact of goals on market value is slightly diminished when assists are included in the model, suggesting that while scoring goals is important, playmaking contributions (assists) may have a more pronounced effect on market valuation.
+
+3. Fit improves modestly: Residual standard error drops from 1.398 → 1.366, indicating a slightly tighter fit when you account for both scoring and creating.
+
+4. Playing time still matters, but its marginal effect is small compared to direct contributions (goals/assists).
+
+The per‑minute effect halves to 0.0002, but remains highly significant, suggesting that availability (and match fitness) is still a real value driver.
+
+
+*Conclusion:* Even when down‐weighting extreme valuations, goals and especially assists emerge as strong, statistically significant drivers of a striker’s transfer price.
+
+#### 4.1.5 Relation between *injured* and *log_cv*
+
+```{r}
+boxplot(log_cv ~ injury, data = soccerclean,
+        col = "violet",
+        main = "log(Current Value) by Injury Category",
+        ylab = "log(Current Value)",
+        xlab = "Injury Category")
+```
+
+```{r}
+ggplot(soccerclean, aes(x = injury, y = log_cv)) +
+  geom_boxplot(fill = "lightblue") +
+  stat_summary(fun = mean, geom = "point", color = "red", size = 2) +
+  labs(title = "log(Current Value) by Injury Category",
+       x = "Injury Category", y = "log(Current Value)") +
+  theme_minimal()
+```
+
+The boxplot visualises the relationship between injury duration categories and log-transformed market value (log_cv). Interestingly, players with no injury history tend to have lower median and mean market values than those who experienced injuries, even in longer-duration categories. This suggests that higher-valued players may be more involved in gameplay, increasing their risk of injury, or that market value is resilient to moderate injury setbacks, especially for established or high-performing players. Overall, the differences across categories are relatively subtle, and further statistical testing would be required to determine if these differences are significant.
+
+```{r}
+anova_injury <- aov(log_cv ~ injury, data = soccerclean)
+summary(anova_injury)
+```
+
+A one-way ANOVA was conducted to evaluate whether log-transformed market value (log_cv) differs significantly across levels of injury duration. The results were highly significant (F(5, 2764) = 92.72, p < 2e-16), indicating that there is a statistically significant difference in market value among players based on their injury history. This suggests that injury duration, even though not strictly linear in its effect, is meaningfully associated with variations in a player's market valuation. Further post-hoc analysis would be needed to identify where these differences lie.
+
+```{r}
+pairwise.t.test(soccerclean$log_cv, soccerclean$injury, p.adjust.method = "bonferroni")
+```
+
+The pairwise t-tests with Bonferroni adjustment reveal that players with no injury history have significantly lower mean log_cv compared to all injury categories (all p-values < 2e-16). However, no significant differences were found between the various injury durations themselves (e.g., between "<1M" and "2M–6M"), as all p-values were above common significance thresholds.
+
+This suggests that while being injured (regardless of duration) is associated with a higher market value—likely due to greater involvement or prominence on the field—longer injury duration does not necessarily diminish value further among already-valued players.
+
+#### 4.1.6 Relation between *position* and *log_cv*
+
+```{r}
+boxplot(log_cv ~ position, data = soccerclean,
+        main = "log(Current Value) by Position",
+        col = "lightblue",
+        ylab = "log(Current Value)")
+```
+
+```{r}
+ggplot(soccerclean, aes(x = position, y = log_cv)) +
+  geom_boxplot(fill = "lightblue") +
+  stat_summary(fun = mean, geom = "point", color = "red", size = 2) +
+  labs(title = "log(Current Value) by Position",
+       x = "Position", y = "log(Current Value)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+The boxplot illustrates the distribution of log-transformed player market value (log_cv) across four attacking positions: Centre Forward, Left Winger, Right Winger, and Second Striker. 
+
+Observations:
+1. The distributions appear fairly similar, with no striking differences in median or mean values across groups. This suggests that among attackers, position alone does not substantially differentiate market value. 
+
+2. While Centre Forwards and Wingers show slightly higher mean values, the overlapping interquartile ranges imply that value is more likely influenced by individual performance metrics (e.g., goals, assists) rather than positional role alone.
+
+```{r}
+anova_position <- aov(log_cv ~ position, data = soccerclean)
+summary(anova_position)
+```
+
+A one-way ANOVA was conducted to examine whether market value (log_cv) differed significantly across attacker positions (Centre Forward, Left Winger, Right Winger, Second Striker).
+
+The results indicated that position was not a statistically significant predictor of market value (F(3, 2766) = 1.22, p = 0.301).
+This suggests that among attackers, market value does not significantly differ by positional role.
+
+#### 4.1.7 Relation between *winger* and *log_cv* (2 sample t-test)
+```{r}
+boxplot(log_cv ~ winger, data = soccerclean,
+        names = c("Non-Winger", "Winger"),
+        col = c("lightgray", "lightblue"),
+        main = "log(Current Value) by Winger Status",
+        ylab = "log(Current Value)")
+```
+
+```{r}
+ggplot(soccerclean, aes(x = factor(winger, labels = c("Non-Winger", "Winger")), y = log_cv)) +
+  geom_boxplot(fill = "lightblue") +
+  stat_summary(fun = mean, geom = "point", color = "red", size = 2) +
+  labs(title = "log(Current Value) by Winger Status",
+       x = "Winger Status", y = "log(Current Value)") +
+  theme_minimal()
+```
+This boxplot compares log-transformed market value (log_cv) between Wingers and Non-Wingers. Both groups exhibit nearly identical distributions, with overlapping interquartile ranges, similar medians, and means (red dots). This suggests that being a winger does not significantly influence a player’s market value on its own. Instead, valuation is likely driven more by individual performance metrics such as goals and assists, rather than a binary positional classification.
+
+```{r}
+var.test(log_cv ~ winger, data = soccerclean)
+```
+
+The F-test for equality of variances showed no significant difference in variances between groups (p = 0.5122) > 0.05, so equal variances were assumed in the two-sample t-test.
+
+```{r}
+t.test(log_cv ~ winger, data = soccerclean, var.equal = TRUE)
+```
+This tests:
+H₀ (Null): Mean log_cv is equal between wingers and non-wingers
+H₁ (Alternative): Mean log_cv is different between the two groups
+The p-value (0.3454) is much greater than 0.05, so we fail to reject the null hypothesis. 
+
+There is no statistically significant difference in log_cv between wingers and non-wingers.
+
+#### 4.1.8 Relation between *minutes_category* and *log_cv* (ANOVA)
+```{r}
+boxplot(log_cv ~ minutes_category, data = soccerclean,
+        col = "lightblue",
+        main = "log(Current Value) by Experience Level",
+        xlab = "Experience Level",
+        ylab = "log(Current Value)",
+        las = 1)
+```
+
+```{r}
+anova_exp <- aov(log_cv ~ minutes_category, data = soccerclean)
+summary(anova_exp)
+```
+
+A one-way ANOVA was conducted to evaluate whether log-transformed market value (log_cv) differs significantly across levels of minutes played. The results were highly significant (F(5, 2764) = 92.72, p < 2e-16), indicating that there is a statistically significant difference in market value among players based on their minutes played. This suggests that for minutes played, even though not strictly linear in its effect, is meaningfully associated with variations in a player's market valuation. Further post-hoc analysis would be needed to identify where these differences lie.
+
+```{r}
+pairwise.t.test(soccerclean$log_cv, soccerclean$minutes_category, p.adjust.method = "bonferroni")
+```
+
+The Bonferroni-adjusted pairwise t-tests reveal that mean log-transformed market value (log_cv) differs significantly across nearly all minutes-played categories. 
+
+#### 4.2 What is the most important variable to predict log_cv?
+
+``` {r}
+# log_cv vs totalgoals
+model1<-lm(log_cv ~ totalgoals, data = soccerclean)
+summary(model1)
+```
+
+``` {r}
+par(mfrow=c(1,2))
+boxplot(model1$residuals)
+qqnorm(model1$residuals)
+qqline(model1$residuals)
+```
+
+``` {r}
+# log_cv vs totalassists
+model2 <- lm(log_cv ~ totalassists, data = soccerclean)
+summary(model2)
+```
+
+``` {r}
+par(mfrow=c(1,2))
+boxplot(model2$residuals)
+qqnorm(model2$residuals)
+qqline(model2$residuals)
+```
+
+``` {r}
+# log_cv vs minutes.played
+model3 <- lm(log_cv ~ minutes.played, data = soccerclean)
+summary(model3)
+```
+
+``` {r}
+par(mfrow=c(1,2))
+boxplot(model3$residuals)
+qqnorm(model3$residuals)
+qqline(model3$residuals)
+```
+
+``` {r}
+# log_cv vs days_injured
+model4 <- lm(log_cv ~ days_injured, data = soccerclean)
+summary(model4)
+```
+
+``` {r}
+par(mfrow=c(1,2))
+boxplot(model4$residuals)
+qqnorm(model4$residuals)
+qqline(model4$residuals)
+```
+
+#### 4.3 MULTI REGRESSION MODEL
+
+``` {r}
+full_model <- lm(formula = log_cv ~ totalgoals + totalassists + minutes.played + days_injured, data = soccerclean)
+step(full_model, direction="backward")
+
+reduced_model <- lm(formula = log_cv ~ totalgoals + totalassists, data = soccerclean)
+step(reduced_model, direction="backward")
+```
+
+``` {r}
+# Compare AIC (lower is better)
+AIC(full_model, reduced_model)
+```
+
+``` {r}
+# Compare adjusted R² and residual SE
+summary(full_model)$adj.r.squared
+summary(full_model)$sigma
+```
+
+``` {r}
+summary(reduced_model)$adj.r.squared
+summary(reduced_model)$sigma
+```
+
+``` {r}
+# Formal test whether the extra terms help
+anova(reduced_model, full_model)
+```
+
+```{r model-comparison, echo=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# 1) Create a tibble with your results
+comparison_tbl <- tibble(
+  Criterion         = c("AIC",
+                        "Adjusted R²",
+                        "Residual SE",
+                        "ANOVA F‑test (ΔRSS)"),
+  `Full Model`      = c(9340.9, 0.3630, 1.3046, NA),
+  `Reduced Model`   = c(9489.7, 0.3275, 1.3406, NA),
+  `Δ (Full−Reduced)`= c(-148.8, 0.0355, -0.0360, "p < 2×10⁻¹⁶"),
+  `What it means`   = c(
+    "Full is much lower ⇒ substantially better fit.",
+    "Full explains ~3.6 pp more of the variance.",
+    "Full has slightly tighter residual spread.",
+    "Adding the two extra terms yields a significant reduction in RSS."
+  )
+)
+
+# 2) Render as a nice HTML/Markdown table
+comparison_tbl %>%
+  kable(
+    caption    = "Comparison of Full vs. Reduced Models",
+    booktabs   = TRUE,
+    digits     = c(0, 1, 3, 3, 3, NA)  # adjust decimal places per column
+  ) %>%
+  kable_styling(full_width = FALSE, position = "center")
+```
+
+``` {r}
+library(MASS)
+rlm_mod <- rlm(
+  log_cv ~ totalgoals + totalassists + minutes.played + days_injured,
+  data = soccerclean
+)
+
+rlm_sum <- summary(rlm_mod)
+rlm_sum
+```
+``` {r}
+rlm_coef <-coef(rlm_sum)
+rlm_coef
+```
