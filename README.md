@@ -347,21 +347,21 @@ R-squared: 0.2546
 Boxplot and qq-plot of residuals:
 ![Total Goals](images/4.4%202%20totalgoals.png)  
 
-##### Total Assistss (X):
+##### Total Assists (X):
 Fitted Model with Y being log_cv: $Y = 13.2151 + 0.1724X$
 p-value: <2.2e^{-16}
 R-squared: 0.2807
 Boxplot and qq-plot of residuals:
 ![Total Assists](images/4.4%203%20totalassists.png)  
 
-##### Minutes.played (X):
+##### Minutes Played (X):
 Fitted Model with Y being log_cv: $Y = 1.279e^1 + (5.038e^{-4})X$
 p-value: <2.2e^{-16}
 R-squared: 0.3125
 Boxplot and qq-plot of residuals:
 ![Minutes Played](images/4.4%204%20minutes.played.png) 
 
-##### Total Assists (X):
+##### Days Injured (X):
 Fitted Model with Y being log_cv: $Y = 13.7219 + 0.0019X$
 p-value: <2.2e^{-16}
 R-squared: 0.0442
