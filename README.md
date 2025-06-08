@@ -14,7 +14,7 @@ Questions:
 
 # 2. Data Preparation and Cleaning
 
-The “Football Player Transfer Values” dataset was obtained from Kaggle, constructed to estimate football players' transfer fees. It consists of 1 CSV file, titled “FootballTransferValues”, with over 22 attributes per player, providing a comprehensive overview of factors that may influence a player's transfer value. These attributes include basic demographic information such as age, height, and playing position, as well as professional statistics including goals scored, assists, injury history, and total individual and team awards accumulated over a player's career. All data was recorded across the 2021 - 2022 and 2022 - 2023 seasons and is a curated collection of real-world football data. 
+The [Football Player Transfer Values Dataset](https://www.kaggle.com/datasets/khanghunhnguyntrng/football-players-transfer-fee-prediction-dataset) was obtained from Kaggle, constructed to estimate football players' transfer fees. It consists of 1 CSV file, titled “FootballTransferValues”, with over 22 attributes per player, providing a comprehensive overview of factors that may influence a player's transfer value. These attributes include basic demographic information such as age, height, and playing position, as well as professional statistics including goals scored, assists, injury history, and total individual and team awards accumulated over a player's career. All data was recorded across the 2021 - 2022 and 2022 - 2023 seasons and is a curated collection of real-world football data. 
 
 Before proceeding to data analysis, we first performed a preliminary data cleaning to ensure that: 
 1. Rows with missing values or zero market value (current_value) were cleared. 
