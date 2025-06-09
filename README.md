@@ -4,7 +4,6 @@ Football is one of the most globally followed sports, with millions of people wa
 # 1.  Introduction
 In 2023 alone, global football transfer spending reached a record-breaking $9.63 billion, reflecting the growing financial stakes and strategic importance of player transfers in the modern game. Notable transfers like Neymar’s €222 million move to Paris Saint-Germain, Kylian Mbappé’s €180 million transfer, and João Félix’s €126 million deal exemplify how player valuations have escalated dramatically in recent years.
 These staggering figures highlight how crucial it has become to understand the factors that drive a player’s market value. We used a dataset containing transfer prices across 2 seasons, 2021-2022 and 2022-2023, and investigated the variables influencing football players’ transfer prices. This project aims to uncover patterns and insights that can inform better decision-making within the football transfer market. We hope to answer these questions through our analysis:
-Questions: 
 * Can the trading value of a player be predicted using a player's height, and age? 
 * To what extent do injuries result in a difference in a player's trading value?
 * Does the number of assists or goals affect a player's trading value more? 
@@ -41,16 +40,16 @@ After all the preparation and cleaning,  2794 observations (players) with 14 var
 
 # 3. Description and Cleaning of Dataset
 
-## 3.1 Summary statistics for the main variable of interest, current_value
+## 3.1 Summary statistics for the main variable of interest, *current_value*
 
 ![image](images/3.1%20Histogram.png)
 
-* As seen in the histogram of current_value, we observed that the variable exhibited significant right-skewness. To address this, we applied a natural log transformation to the variable.
+* As seen in the histogram of *current_value*, we observed that the variable exhibited significant right-skewness. To address this, we applied a natural log transformation to the variable.
 
 ![image](images/3.1%20Boxplot.png)
 
-* The log-transformed data appears to have some outlying values at the right tail. Therefore we plotted a boxplot of log(current_value) to investigate the outliers. As seen in the boxplot mentioned, there are some outliers on the right of the boxplot. 
-* As a result, we removed 8 observations with values of log(current_value) greater than 18.32185 or less than 9.645639, resulting in a reduction in the number of observations from 2794 to 2786.
+* The log-transformed data appears to have some outlying values at the right tail. Therefore we plotted a boxplot of *log(current_value)* to investigate the outliers. As seen in the boxplot mentioned, there are some outliers on the right of the boxplot. 
+* As a result, we removed 8 observations with values of *log(current_value)* greater than 18.32185 or less than 9.645639, resulting in a reduction in the number of observations from 2794 to 2786.
 
 ## 3.2 Summary Statistics for other variables
 ### 3.2.1 Position of the player `position`
@@ -58,13 +57,13 @@ After all the preparation and cleaning,  2794 observations (players) with 14 var
 
 * The bar chart displays the distribution of players across the four attacking positions: Centre Forward, Left Winger, Right Winger, Second Striker.
 
-### 3.2.2 Whether he is a winger `winger`
+### 3.2.2 Whether he is a winger, *winger*
 ![image](images/3.2.2%20Winger.png)
 
-* Winger is encoded as a binary variable, hence we used a 2-sample t-test to examine the distribution.
+* *Winger* is encoded as a binary variable, hence we used a 2-sample t-test to examine the distribution.
 * Since there is a nearly equal distribution between wingers and non-wingers in the dataset, it supports fair comparisons in subsequent analyses involving the winger variable, such as examining its relationship with market value.
   
-### 3.2.3 Height of the player `height`
+### 3.2.3 Height of the player, *height*
 ![image](images/3.2.3%20Distribution%20of%20player's%20height.png)
 
 * Player height is relatively normally distributed among attackers in the sample, with most falling between 170 cm and 190 cm.
@@ -78,14 +77,14 @@ After all the preparation and cleaning,  2794 observations (players) with 14 var
 * Finally, we analysed the distribution based on each position group.
 * Height may play a more prominent role for Centre Forwards compared to other forward roles.
 
-### 3.2.5 Age of the player `age`
+### 3.2.4 Age of the player, *age*
 ![image](images/3.2.4%20Distribution%20of%20log_age.png)
 ![image](images/3.2.4%20Boxplot%20of%20log_age.png)
 
 * The log-transformation(base e) is applied.
 * No outliers are removed for the boxplot.
 
-### 3.2.5 Total number of days injured across the 2 seasons, `days_injured`
+### 3.2.5 Total number of days injured across the 2 seasons, *days_injured*
 ![image](images/3.2.5%20Distribution%20of%20Injuries%20in%20the%20dataset.png)
 
 * To analyse how injury history relates to player value and performance, we created a new categorical variable injury based on total days injured over two seasons.
@@ -96,7 +95,7 @@ After all the preparation and cleaning,  2794 observations (players) with 14 var
 * The log-transformation(base e) is applied.
 * No outliers are removed for the boxplot.
   
-### 3.2.6 Goals scored `totalgoals`
+### 3.2.6 Goals scored, *totalgoals*
 ![image](images/3.2.6%20Histogram%20of%20totalgoals.png)
 ![image](images/3.2.6%20Boxplot%20of%20totalgoals.png)
 
@@ -113,11 +112,11 @@ After all the preparation and cleaning,  2794 observations (players) with 14 var
 4. High (9–15), and
 5. Very High (16–83)
    
-### 3.2.7 Total Assists `totalassists`
+### 3.2.7 Total Assists, *totalassists*
 ![image](images/3.2.7%20Histogram%20of%20totalassists.png)
 
 * Again, data is highly skewed and contains many outliers.
-* Similar to totalgoals, no outliers were removed.
+* Similar to *totalgoals*, no outliers were removed.
 
 ![image](images/3.2.7%20Number%20of%20players%20by%20category.png)
 
